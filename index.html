@@ -106,9 +106,9 @@
   </style>
 </head>
 <body>
-  <div class="chat">
-    <h1>💬 My Chat</h1>
-    <div id="status">Firebaseに接続中...</div>
+  <div class="chat"><h1>💬 My Chat</h1>
+<div id="status">Firebaseに接続中...</div>
+<div id="online-count">🟢 オンライン：確認中...</div>
 
     <input
       id="nickname"
@@ -134,12 +134,14 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
   <script>
     const firebaseConfig = {
       apiKey: "AIzaSyD6WQiYyy9efPkwkHmne9lG4zAivW1ZbG0",
       authDomain: "asahub-chat.firebaseapp.com",
       projectId: "asahub-chat",
+      databaseURL: "https://asahub-chat-default-rtdb.firebaseio.com",
       storageBucket: "asahub-chat.firebasestorage.app",
       messagingSenderId: "455399020344",
       appId: "1:455399020344:web:f399fcbcf5734c101fd3cd"
@@ -151,6 +153,8 @@
     const send = document.getElementById("send");
     const status = document.getElementById("status");
     const error = document.getElementById("error");
+    const onlineCount = document.getElementById("online-count");
+let rtdb;
 
     let db;
     let ready = false;
@@ -200,6 +204,40 @@
         status.textContent = "匿名ログイン中...";
 
         await firebase.auth().signInAnonymously();
+                // Realtime Databaseに接続
+        rtdb = firebase.database();
+
+        // 自分のオンライン状態を記録
+        const uid = firebase.auth().currentUser.uid;
+        const myStatusRef = rtdb.ref("status/" + uid);
+
+        // 接続が切れたらオフラインにする
+        await myStatusRef.onDisconnect().set({
+          state: "offline",
+          last_changed: firebase.database.ServerValue.TIMESTAMP
+        });
+
+        // オンライン状態にする
+        await myStatusRef.set({
+          state: "online",
+          last_changed: firebase.database.ServerValue.TIMESTAMP
+        });
+
+        // オンラインの人数を数える
+        rtdb.ref("status").on("value", (snapshot) => {
+          let count = 0;
+
+          snapshot.forEach((child) => {
+            if (child.child("state").val() === "online") {
+              count++;
+            }
+          });
+
+          onlineCount.textContent = "🟢 オンライン：" + count + "人";
+        }, (err) => {
+          console.error("オンライン人数の取得エラー:", err);
+          onlineCount.textContent = "オンライン人数を取得できません";
+        });
 
         status.textContent = "🟢 接続しました";
         ready = true;
