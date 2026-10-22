@@ -1,112 +1,223 @@
 <!DOCTYPE html>
+
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>My Chat</title>
   <style>
-    body {
-      font-family: sans-serif;
-      background: #f0f2f5;
-      margin: 0;
-      padding: 30px;
-      text-align: center;
-    }
+    * { box-sizing: border-box; }
 
-    .chat {
-      max-width: 500px;
-      margin: auto;
-      background: white;
-      padding: 20px;
-      border-radius: 16px;
-      box-shadow: 0 4px 15px #0001;
-    }
+```
+body {
+  font-family: sans-serif;
+  background: #f0f2f5;
+  margin: 0;
+  padding: 30px 12px;
+  text-align: center;
+}
 
-    h1 {
-      color: #333;
-    }
+.chat {
+  max-width: 500px;
+  margin: auto;
+  background: white;
+  padding: 20px;
+  border-radius: 16px;
+  box-shadow: 0 4px 15px #0001;
+}
 
-    #messages {
-      height: 300px;
-      overflow-y: auto;
-      border: 1px solid #ddd;
-      border-radius: 10px;
-      padding: 10px;
-      text-align: left;
-      margin-bottom: 15px;
-    }
+h1 { color: #333; }
 
-    input {
-      padding: 12px;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-      box-sizing: border-box;
-    }
+#status {
+  color: #666;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
 
-    #message {
-      width: 70%;
-    }
+#messages {
+  height: 350px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 10px;
+  text-align: left;
+  margin-bottom: 15px;
+  background: #fff;
+}
 
-    button {
-      padding: 12px;
-      border: none;
-      border-radius: 8px;
-      background: #5865f2;
-      color: white;
-      cursor: pointer;
-    }
+input {
+  padding: 12px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-size: 16px;
+  max-width: 100%;
+}
 
-    .item {
-      background: #eef0ff;
-      padding: 10px;
-      border-radius: 10px;
-      margin-bottom: 8px;
-      overflow-wrap: anywhere;
-    }
+#nickname {
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.send-row {
+  display: flex;
+  gap: 8px;
+}
+
+#message {
+  flex: 1;
+  min-width: 0;
+}
+
+button {
+  padding: 12px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #5865f2;
+  color: white;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+button:disabled {
+  background: #aaa;
+  cursor: not-allowed;
+}
+
+.item {
+  background: #eef0ff;
+  padding: 10px;
+  border-radius: 10px;
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+
+.item strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.time {
+  color: #777;
+  font-size: 11px;
+  margin-top: 6px;
+}
+
+#error {
+  color: #c62828;
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+```
+
   </style>
 </head>
 <body>
   <div class="chat">
     <h1>💬 My Chat</h1>
+    <div id="status">Firebaseに接続中...</div>
 
-    <input id="nickname" placeholder="ニックネーム">
-    <div id="messages"></div>
+```
+<input id="nickname" maxlength="20" placeholder="ニックネーム（20文字以内）">
+<div id="messages" aria-live="polite"></div>
 
-    <input id="message" placeholder="メッセージを入力">
-    <button id="send">送信</button>
+<div class="send-row">
+  <input id="message" maxlength="500" placeholder="メッセージを入力" autocomplete="off">
+  <button id="send" disabled>送信</button>
+</div>
+
+<p id="error" role="alert"></p>
+```
+
   </div>
 
+  <!-- Firebase SDK（互換性のある script タグ方式） -->
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
   <script>
+    // FirebaseのWebアプリ設定
+    const firebaseConfig = {
+      apiKey: "AIzaSyD6WQiYyy9efPkwkHmne9lG4zAivW1ZbG0",
+      authDomain: "asahub-chat.firebaseapp.com",
+      projectId: "asahub-chat",
+      storageBucket: "asahub-chat.firebasestorage.app",
+      messagingSenderId: "455399020344",
+      appId: "1:455399020344:web:f399fcbcf5734c101fd3cd"
+    };
+
     const nickname = document.getElementById("nickname");
     const message = document.getElementById("message");
     const messages = document.getElementById("messages");
     const send = document.getElementById("send");
+    const status = document.getElementById("status");
+    const error = document.getElementById("error");
 
-    send.addEventListener("click", () => {
-      const name = nickname.value.trim() || "名無し";
-      const text = message.value.trim();
+    let db;
+    let ready = false;
+    let sending = false;
 
-      if (!text) return;
+    // ニックネームは同じブラウザで保存
+    nickname.value = localStorage.getItem("chatNickname") || "";
+    nickname.addEventListener("input", () => {
+      localStorage.setItem("chatNickname", nickname.value.slice(0, 20));
+    });
 
+    function showError(text) {
+      error.textContent = text;
+    }
+
+    function showMessage(doc) {
+      const data = doc.data();
       const item = document.createElement("div");
       item.className = "item";
 
-      const nameElement = document.createElement("strong");
-      nameElement.textContent = name + "：";
+      const name = document.createElement("strong");
+      name.textContent = (data.name || "名無し") + "：";
 
-      const textElement = document.createElement("span");
-      textElement.textContent = text;
+      const text = document.createElement("div");
+      text.textContent = data.text || "";
 
-      item.append(nameElement, textElement);
+      item.append(name, text);
+
+      if (data.createdAt && data.createdAt.toDate) {
+        const time = document.createElement("div");
+        time.className = "time";
+        time.textContent = data.createdAt.toDate().toLocaleString("ja-JP");
+        item.appendChild(time);
+      }
+
       messages.appendChild(item);
+    }
 
-      message.value = "";
-      messages.scrollTop = messages.scrollHeight;
-    });
+    async function startChat() {
+      try {
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.firestore();
 
-    message.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") send.click();
-    });
-  </script>
-</body>
-</html>
+        // 匿名ログイン
+        await firebase.auth().signInAnonymously();
+
+        status.textContent = "🟢 接続しました";
+        ready = true;
+        send.disabled = false;
+
+        // 最新100件を取得し、新しい投稿をリアルタイム表示
+        db.collection("messages")
+          .orderBy("createdAt", "desc")
+          .limit(100)
+          .onSnapshot((snapshot) => {
+            messages.replaceChildren();
+
+            const docs = snapshot.docs.slice().reverse();
+            docs.forEach(showMessage);
+            messages.scrollTop = messages.scrollHeight;
+            showError("");
+          }, (err) => {
+            console.error(err);
+            status.textContent = "メッセージを読み込めません";
+            showError("読み込みエラー: " + err.message);
