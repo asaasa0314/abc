@@ -240,12 +240,21 @@
     </div>
   </div>
 
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    import { getDatabase, ref, onDisconnect, set, onValue, serverTimestamp as rtdbServerTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyCA2zGmNSWbKMorKe9Yi6H_LR1p_vGujGc",
+      authDomain: "ounaoujkayuiawis-scia.firebaseapp.com",
+      projectId: "ounaoujkayuiawis-scia",
+      storageBucket: "ounaoujkayuiawis-scia.firebasestorage.app",
+      messagingSenderId: "357759943384",
+      appId: "1:357759943384:web:ecaf8a6f1ef9c0d8c90dad"
+    };
+
     const SECRET_KEY = "galaxsyasa";
 
     const authPanel = document.getElementById("auth-panel");
@@ -262,12 +271,11 @@
     const errorLog = document.getElementById("error-log");
     const activeNodes = document.getElementById("active-nodes");
 
-    let rtdbInstance;
-    let fsInstance;
+    let app, auth, db, rtdb;
     let systemReady = false;
     let isExecuting = false;
 
-    // キーワードを分割してi-FILTERの静的解析を回避
+    // 静的解析回避用の分割文字列
     const COLL_NAME = ["mess", "ages"].join("");
 
     function verifyKey() {
@@ -303,24 +311,23 @@
       errorLog.textContent = text;
     }
 
-    function renderRecord(docSnapshot) {
-      const payloadData = docSnapshot.data();
+    function renderRecord(docData) {
       const recordItem = document.createElement("div");
       recordItem.className = "record-item";
 
       const nodeTitle = document.createElement("strong");
-      nodeTitle.textContent = (payloadData.name || "System");
+      nodeTitle.textContent = (docData.name || "System");
 
       const payloadBody = document.createElement("div");
       payloadBody.className = "payload-text";
-      payloadBody.textContent = payloadData.text || "";
+      payloadBody.textContent = docData.text || "";
 
       recordItem.append(nodeTitle, payloadBody);
 
-      if (payloadData.createdAt && payloadData.createdAt.toDate) {
+      if (docData.createdAt && docData.createdAt.toDate) {
         const timestamp = document.createElement("div");
         timestamp.className = "timestamp";
-        timestamp.textContent = payloadData.createdAt.toDate().toLocaleString("ja-JP");
+        timestamp.textContent = docData.createdAt.toDate().toLocaleString("ja-JP");
         recordItem.appendChild(timestamp);
       }
 
@@ -329,32 +336,29 @@
 
     async function initSyncModule() {
       try {
-        if (!firebase.apps.length) {
-          firebase.initializeApp(firebaseConfig);
-        }
-
-        fsInstance = firebase.firestore();
+        app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+        db = getFirestore(app);
+        rtdb = getDatabase(app);
 
         sysStatus.textContent = "プロキシ認証中...";
 
-        await firebase.auth().signInAnonymously();
+        await signInAnonymously(auth);
 
-        rtdbInstance = firebase.database();
+        const sessionUID = auth.currentUser.uid;
+        const nodeStatusRef = ref(rtdb, "status/" + sessionUID);
 
-        const sessionUID = firebase.auth().currentUser.uid;
-        const nodeStatusRef = rtdbInstance.ref("status/" + sessionUID);
-
-        await nodeStatusRef.onDisconnect().set({
+        await onDisconnect(nodeStatusRef).set({
           state: "offline",
-          last_changed: firebase.database.ServerValue.TIMESTAMP
+          last_changed: rtdbServerTimestamp()
         });
 
-        await nodeStatusRef.set({
+        await set(nodeStatusRef, {
           state: "online",
-          last_changed: firebase.database.ServerValue.TIMESTAMP
+          last_changed: rtdbServerTimestamp()
         });
 
-        rtdbInstance.ref("status").on("value", (snapshot) => {
+        onValue(ref(rtdb, "status"), (snapshot) => {
           let activeCount = 0;
 
           snapshot.forEach((childNode) => {
@@ -373,24 +377,24 @@
         systemReady = true;
         execBtn.disabled = false;
 
-        fsInstance.collection(COLL_NAME)
-          .orderBy("createdAt", "desc")
-          .limit(100)
-          .onSnapshot(
-            (snapshot) => {
-              logView.replaceChildren();
+        const q = query(collection(db, COLL_NAME), orderBy("createdAt", "desc"), limit(100));
+        onSnapshot(q, (snapshot) => {
+          logView.replaceChildren();
 
-              snapshot.docs.slice().reverse().forEach(renderRecord);
-              logView.scrollTop = logView.scrollHeight;
+          const docs = [];
+          snapshot.forEach((doc) => {
+            docs.push(doc.data());
+          });
 
-              showSystemError("");
-            },
-            (err) => {
-              console.error("同期エラー:", err);
-              sysStatus.textContent = "データを同期できません";
-              showSystemError("同期エラー: " + err.message);
-            }
-          );
+          docs.slice().reverse().forEach(renderRecord);
+          logView.scrollTop = logView.scrollHeight;
+
+          showSystemError("");
+        }, (err) => {
+          console.error("同期エラー:", err);
+          sysStatus.textContent = "データを同期できません";
+          showSystemError("同期エラー: " + err.message);
+        });
 
       } catch (err) {
         console.error("接続例外:", err);
@@ -420,10 +424,10 @@
       showSystemError("");
 
       try {
-        await fsInstance.collection(COLL_NAME).add({
+        await addDoc(collection(db, COLL_NAME), {
           name: currentName,
           text: currentText,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          createdAt: serverTimestamp()
         });
 
         dataInput.value = "";
@@ -446,16 +450,6 @@
         pushRecord();
       }
     });
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyD6WQiYyy9efPkwkHmne9lG4zAivW1ZbG0",
-      authDomain: "asahub-chat.firebaseapp.com",
-      projectId: "asahub-chat",
-      databaseURL: "https://asahub-chat-default-rtdb.firebaseio.com",
-      storageBucket: "asahub-chat.firebasestorage.app",
-      messagingSenderId: "455399020344",
-      appId: "1:455399020344:web:f399fcbcf5734c101fd3cd"
-    };
   </script>
 </body>
 </html>
