@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>My Chat</title>
+  <title>System Monitor</title>
   <style>
     * { box-sizing: border-box; }
 
@@ -40,11 +40,11 @@
     }
 
     /* 認証画面 */
-    #lock-screen {
+    #auth-panel {
       text-align: center;
     }
 
-    #lock-screen p {
+    #auth-panel p {
       color: #94a3b8;
       font-size: 14px;
       margin-bottom: 20px;
@@ -56,12 +56,12 @@
       gap: 12px;
     }
 
-    /* チャット画面 */
-    #chat-screen {
-      display: none; /* 初期状態は非表示 */
+    /* ワークスペース画面 */
+    #workspace {
+      display: none;
     }
 
-    #status {
+    #sys-status {
       text-align: center;
       color: #38bdf8;
       font-size: 13px;
@@ -69,7 +69,7 @@
       font-weight: 500;
     }
 
-    #online-count {
+    #active-nodes {
       text-align: center;
       color: #4ade80;
       font-size: 13px;
@@ -77,7 +77,7 @@
       font-weight: 600;
     }
 
-    #messages {
+    #log-view {
       height: 380px;
       overflow-y: auto;
       border: 1px solid rgba(255, 255, 255, 0.08);
@@ -90,11 +90,10 @@
       gap: 10px;
     }
 
-    /* スクロールバーのカスタマイズ */
-    #messages::-webkit-scrollbar {
+    #log-view::-webkit-scrollbar {
       width: 6px;
     }
-    #messages::-webkit-scrollbar-thumb {
+    #log-view::-webkit-scrollbar-thumb {
       background: rgba(255, 255, 255, 0.2);
       border-radius: 3px;
     }
@@ -115,7 +114,7 @@
       box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);
     }
 
-    #nickname {
+    #node-name {
       width: 100%;
       margin-bottom: 12px;
     }
@@ -125,7 +124,7 @@
       gap: 8px;
     }
 
-    #message {
+    #data-input {
       flex: 1;
       min-width: 0;
     }
@@ -159,7 +158,7 @@
       opacity: 0.6;
     }
 
-    .item {
+    .record-item {
       background: rgba(51, 65, 85, 0.7);
       border: 1px solid rgba(255, 255, 255, 0.05);
       padding: 10px 14px;
@@ -173,27 +172,27 @@
       to { opacity: 1; transform: translateY(0); }
     }
 
-    .item strong {
+    .record-item strong {
       display: block;
       margin-bottom: 4px;
       color: #818cf8;
       font-size: 14px;
     }
 
-    .item .text {
+    .record-item .payload-text {
       color: #f1f5f9;
       font-size: 14px;
       line-height: 1.4;
     }
 
-    .time {
+    .timestamp {
       color: #64748b;
       font-size: 11px;
       margin-top: 6px;
       text-align: right;
     }
 
-    #error, #pass-error {
+    #error-log, #auth-msg {
       color: #f87171;
       font-size: 13px;
       margin-top: 10px;
@@ -206,42 +205,42 @@
 <body>
 
   <div class="container">
-    <!-- ロック画面 -->
-    <div id="lock-screen">
-      <h1>🔒 Password Required</h1>
-      <p>チャットに参加するにはパスワードを入力してください</p>
+    <!-- 認証パネル -->
+    <div id="auth-panel">
+      <h1>🔐 Security Gate</h1>
+      <p>システムにアクセスするにはセキュリティキーを入力してください</p>
       <div class="pass-box">
-        <input type="password" id="pass-input" placeholder="パスワードを入力">
-        <button id="pass-btn">解除</button>
+        <input type="password" id="key-input" placeholder="セキュリティキーを入力">
+        <button id="auth-submit">認証</button>
       </div>
-      <p id="pass-error"></p>
+      <p id="auth-msg"></p>
     </div>
 
-    <!-- チャット画面 -->
-    <div id="chat-screen">
-      <h1>💬 My Chat</h1>
-      <div id="status">Firebaseに接続中...</div>
-      <div id="online-count">🟢 オンライン：確認中...</div>
+    <!-- ワークスペース -->
+    <div id="workspace">
+      <h1>⚡ System Monitor</h1>
+      <div id="sys-status">コアシステムに接続中...</div>
+      <div id="active-nodes">🟢 アクティブノード：確認中...</div>
 
       <input
-        id="nickname"
+        id="node-name"
         maxlength="20"
-        placeholder="ニックネーム（20文字以内）"
+        placeholder="ノード名（20文字以内）"
       >
 
-      <div id="messages" aria-live="polite"></div>
+      <div id="log-view" aria-live="polite"></div>
 
       <div class="send-row">
         <input
-          id="message"
+          id="data-input"
           maxlength="500"
-          placeholder="メッセージを入力"
+          placeholder="送信ペイロードを入力"
           autocomplete="off"
         >
-        <button id="send" disabled>送信</button>
+        <button id="exec-btn" disabled>実行</button>
       </div>
 
-      <p id="error" role="alert"></p>
+      <p id="error-log" role="alert"></p>
     </div>
   </div>
 
@@ -251,203 +250,201 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
   <script>
-    const SECRET_PASSWORD = "galaxsyasa";
+    const SECRET_KEY = "galaxsyasa";
 
-    const lockScreen = document.getElementById("lock-screen");
-    const chatScreen = document.getElementById("chat-screen");
-    const passInput = document.getElementById("pass-input");
-    const passBtn = document.getElementById("pass-btn");
-    const passError = document.getElementById("pass-error");
+    const authPanel = document.getElementById("auth-panel");
+    const workspace = document.getElementById("workspace");
+    const keyInput = document.getElementById("key-input");
+    const authSubmit = document.getElementById("auth-submit");
+    const authMsg = document.getElementById("auth-msg");
 
-    const nickname = document.getElementById("nickname");
-    const message = document.getElementById("message");
-    const messages = document.getElementById("messages");
-    const send = document.getElementById("send");
-    const status = document.getElementById("status");
-    const error = document.getElementById("error");
-    const onlineCount = document.getElementById("online-count");
+    const nodeName = document.getElementById("node-name");
+    const dataInput = document.getElementById("data-input");
+    const logView = document.getElementById("log-view");
+    const execBtn = document.getElementById("exec-btn");
+    const sysStatus = document.getElementById("sys-status");
+    const errorLog = document.getElementById("error-log");
+    const activeNodes = document.getElementById("active-nodes");
 
-    let rtdb;
-    let db;
-    let ready = false;
-    let sending = false;
+    let rtdbInstance;
+    let fsInstance;
+    let systemReady = false;
+    let isExecuting = false;
 
-    // パスワード認証処理
-    function checkPassword() {
-      if (passInput.value === SECRET_PASSWORD) {
-        unlockChat();
+    function verifyKey() {
+      if (keyInput.value === SECRET_KEY) {
+        initWorkspace();
       } else {
-        passError.textContent = "パスワードが違います";
-        passInput.value = "";
-        passInput.focus();
+        authMsg.textContent = "セキュリティキーが無効です";
+        keyInput.value = "";
+        keyInput.focus();
       }
     }
 
-    function unlockChat() {
-      lockScreen.style.display = "none";
-      chatScreen.style.display = "block";
-      startChat();
+    function initWorkspace() {
+      authPanel.style.display = "none";
+      workspace.style.display = "block";
+      initSyncModule();
     }
 
-    passBtn.addEventListener("click", checkPassword);
-    passInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") checkPassword();
+    authSubmit.addEventListener("click", verifyKey);
+    keyInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") verifyKey();
     });
 
-    // 毎回必ずパスワード入力を求めるため、ここではチェックせずフォーカスだけ当てる
-    passInput.focus();
+    keyInput.focus();
 
-    nickname.value = localStorage.getItem("chatNickname") || "";
+    nodeName.value = localStorage.getItem("sysNodeName") || "";
 
-    nickname.addEventListener("input", () => {
-      localStorage.setItem("chatNickname", nickname.value.slice(0, 20));
+    nodeName.addEventListener("input", () => {
+      localStorage.setItem("sysNodeName", nodeName.value.slice(0, 20));
     });
 
-    function showError(text) {
-      error.textContent = text;
+    function showSystemError(text) {
+      errorLog.textContent = text;
     }
 
-    function showMessage(doc) {
-      const data = doc.data();
-      const item = document.createElement("div");
-      item.className = "item";
+    function renderRecord(docSnapshot) {
+      const payloadData = docSnapshot.data();
+      const recordItem = document.createElement("div");
+      recordItem.className = "record-item";
 
-      const name = document.createElement("strong");
-      name.textContent = (data.name || "名無し");
+      const nodeTitle = document.createElement("strong");
+      nodeTitle.textContent = (payloadData.name || "System");
 
-      const text = document.createElement("div");
-      text.className = "text";
-      text.textContent = data.text || "";
+      const payloadBody = document.createElement("div");
+      payloadBody.className = "payload-text";
+      payloadBody.textContent = payloadData.text || "";
 
-      item.append(name, text);
+      recordItem.append(nodeTitle, payloadBody);
 
-      if (data.createdAt && data.createdAt.toDate) {
-        const time = document.createElement("div");
-        time.className = "time";
-        time.textContent = data.createdAt.toDate().toLocaleString("ja-JP");
-        item.appendChild(time);
+      if (payloadData.createdAt && payloadData.createdAt.toDate) {
+        const timestamp = document.createElement("div");
+        timestamp.className = "timestamp";
+        timestamp.textContent = payloadData.createdAt.toDate().toLocaleString("ja-JP");
+        recordItem.appendChild(timestamp);
       }
 
-      messages.appendChild(item);
+      logView.appendChild(recordItem);
     }
 
-    async function startChat() {
+    async function initSyncModule() {
       try {
         if (!firebase.apps.length) {
           firebase.initializeApp(firebaseConfig);
         }
 
-        db = firebase.firestore();
+        fsInstance = firebase.firestore();
 
-        status.textContent = "匿名ログイン中...";
+        sysStatus.textContent = "匿名プロキシ認証中...";
 
         await firebase.auth().signInAnonymously();
 
-        rtdb = firebase.database();
+        rtdbInstance = firebase.database();
 
-        const uid = firebase.auth().currentUser.uid;
-        const myStatusRef = rtdb.ref("status/" + uid);
+        const sessionUID = firebase.auth().currentUser.uid;
+        const nodeStatusRef = rtdbInstance.ref("status/" + sessionUID);
 
-        await myStatusRef.onDisconnect().set({
+        await nodeStatusRef.onDisconnect().set({
           state: "offline",
           last_changed: firebase.database.ServerValue.TIMESTAMP
         });
 
-        await myStatusRef.set({
+        await nodeStatusRef.set({
           state: "online",
           last_changed: firebase.database.ServerValue.TIMESTAMP
         });
 
-        rtdb.ref("status").on("value", (snapshot) => {
-          let count = 0;
+        rtdbInstance.ref("status").on("value", (snapshot) => {
+          let activeCount = 0;
 
-          snapshot.forEach((child) => {
-            if (child.child("state").val() === "online") {
-              count++;
+          snapshot.forEach((childNode) => {
+            if (childNode.child("state").val() === "online") {
+              activeCount++;
             }
           });
 
-          onlineCount.textContent = "🟢 オンライン：" + count + "人";
+          activeNodes.textContent = "🟢 アクティブノード：" + activeCount + "台";
         }, (err) => {
-          console.error("オンライン人数の取得エラー:", err);
-          onlineCount.textContent = "オンライン人数を取得できません";
+          console.error("ステータス取得エラー:", err);
+          activeNodes.textContent = "ノード数を取得できません";
         });
 
-        status.textContent = "🟢 接続しました";
-        ready = true;
-        send.disabled = false;
+        sysStatus.textContent = "🟢 同期完了";
+        systemReady = true;
+        execBtn.disabled = false;
 
-        db.collection("messages")
+        fsInstance.collection("messages")
           .orderBy("createdAt", "desc")
           .limit(100)
           .onSnapshot(
             (snapshot) => {
-              messages.replaceChildren();
+              logView.replaceChildren();
 
-              snapshot.docs.slice().reverse().forEach(showMessage);
-              messages.scrollTop = messages.scrollHeight;
+              snapshot.docs.slice().reverse().forEach(renderRecord);
+              logView.scrollTop = logView.scrollHeight;
 
-              showError("");
+              showSystemError("");
             },
             (err) => {
-              console.error("読み込みエラー:", err);
-              status.textContent = "メッセージを読み込めません";
-              showError("読み込みエラー: " + err.message);
+              console.error("同期エラー:", err);
+              sysStatus.textContent = "データを同期できません";
+              showSystemError("同期エラー: " + err.message);
             }
           );
 
       } catch (err) {
-        console.error("接続エラー:", err);
-        status.textContent = "接続できません";
-        showError(
+        console.error("接続例外:", err);
+        sysStatus.textContent = "接続失敗";
+        showSystemError(
           "接続エラー: " + err.message +
-          "\nFirebase設定、匿名ログイン、Firestoreルールを確認してください。"
+          "\n構成パラメータを確認してください。"
         );
       }
     }
 
-    async function sendMessage() {
-      if (!ready || sending) return;
+    async function pushRecord() {
+      if (!systemReady || isExecuting) return;
 
-      const name = nickname.value.trim().slice(0, 20) || "名無し";
-      const text = message.value.trim();
+      const currentName = nodeName.value.trim().slice(0, 20) || "System";
+      const currentText = dataInput.value.trim();
 
-      if (!text) return;
+      if (!currentText) return;
 
-      if (text.length > 500) {
-        showError("メッセージは500文字以内にしてね。");
+      if (currentText.length > 500) {
+        showSystemError("ペイロードは500文字以内にしてください。");
         return;
       }
 
-      sending = true;
-      send.disabled = true;
-      showError("");
+      isExecuting = true;
+      execBtn.disabled = true;
+      showSystemError("");
 
       try {
-        await db.collection("messages").add({
-          name: name,
-          text: text,
+        await fsInstance.collection("messages").add({
+          name: currentName,
+          text: currentText,
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
 
-        message.value = "";
-        message.focus();
+        dataInput.value = "";
+        dataInput.focus();
 
       } catch (err) {
         console.error("送信エラー:", err);
-        showError("送信できませんでした: " + err.message);
+        showSystemError("送信失敗: " + err.message);
 
       } finally {
-        sending = false;
-        send.disabled = !ready;
+        isExecuting = false;
+        execBtn.disabled = !systemReady;
       }
     }
 
-    send.addEventListener("click", sendMessage);
+    execBtn.addEventListener("click", pushRecord);
 
-    message.addEventListener("keydown", (event) => {
+    dataInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
-        sendMessage();
+        pushRecord();
       }
     });
 
