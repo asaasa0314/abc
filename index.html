@@ -39,6 +39,7 @@
       letter-spacing: 0.5px;
     }
 
+    /* 認証画面 */
     #auth-panel {
       text-align: center;
     }
@@ -49,12 +50,21 @@
       margin-bottom: 20px;
     }
 
+    /* 「全部小文字！」のスタイル */
+    .lowercase-notice {
+      color: #38bdf8 !important;
+      font-weight: bold;
+      font-size: 13px !important;
+      margin-bottom: 8px !important;
+    }
+
     .pass-box {
       display: flex;
       flex-direction: column;
       gap: 12px;
     }
 
+    /* ワークスペース画面 */
     #workspace {
       display: none;
     }
@@ -203,9 +213,11 @@
 <body>
 
   <div class="container">
+    <!-- 認証パネル -->
     <div id="auth-panel">
       <h1>🔐 Security Gate</h1>
       <p>システムにアクセスするにはセキュリティキーを入力してください</p>
+      <p class="lowercase-notice">※ 全部小文字！</p>
       <div class="pass-box">
         <input type="password" id="key-input" placeholder="セキュリティキーを入力">
         <button id="auth-submit">認証</button>
@@ -213,6 +225,7 @@
       <p id="auth-msg"></p>
     </div>
 
+    <!-- ワークスペース -->
     <div id="workspace">
       <h1>⚡ System Monitor</h1>
       <div id="sys-status">コアシステムに接続中...</div>
@@ -266,9 +279,6 @@
     let fsInstance;
     let systemReady = false;
     let isExecuting = false;
-
-    // キーワードを分割してi-FILTERの静的解析を回避
-    const COLL_NAME = ["mess", "ages"].join("");
 
     function verifyKey() {
       if (keyInput.value === SECRET_KEY) {
@@ -335,7 +345,7 @@
 
         fsInstance = firebase.firestore();
 
-        sysStatus.textContent = "プロキシ認証中...";
+        sysStatus.textContent = "匿名プロキシ認証中...";
 
         await firebase.auth().signInAnonymously();
 
@@ -373,7 +383,7 @@
         systemReady = true;
         execBtn.disabled = false;
 
-        fsInstance.collection(COLL_NAME)
+        fsInstance.collection("messages")
           .orderBy("createdAt", "desc")
           .limit(100)
           .onSnapshot(
@@ -420,7 +430,7 @@
       showSystemError("");
 
       try {
-        await fsInstance.collection(COLL_NAME).add({
+        await fsInstance.collection("messages").add({
           name: currentName,
           text: currentText,
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
